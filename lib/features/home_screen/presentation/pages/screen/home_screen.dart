@@ -190,10 +190,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ChangeBottomNavEvent(index),
               );
 
-              if (index == 1) {
+
+              if (index == 2) {
                 Navigator.pushNamed(
                   context,
-                  AppRoutes.categoriesScreen,
+                  AppRoutes.weddingInvitationScreen,
                 );
               }
             },
