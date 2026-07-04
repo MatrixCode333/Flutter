@@ -1,41 +1,20 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
-
-import 'package:animate_do/animate_do.dart';
-import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Required for Clipboard functionality
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-const Color kMidnightDeep = Color(0xFF0F172A);
-const Color kMidnightSlate = Color(0xFF1E293B);
-const Color kRoseGold = Color(0xFFE29587);
-const Color kRoseGoldLight = Color(0xFFF3D5D0);
-const Color kIvory = Color(0xFFFDFCF0);
-const Color kDeepPurple = Color(0xFF5F16E8);
-const Color kDarkIndigo = Color(0xFF1E1B4B);
 
 class InvitationPreviewScreen extends StatefulWidget {
   final String brideName;
-
   final String groomName;
-
   final String venue;
-
   final String address;
-
   final String mapUrl;
-
   final DateTime date;
-
   final String bannerImage;
-
-  final List<String> galleryImages;
-
   final String brideImage;
-
   final String groomImage;
+  final String invitationLink; // ← Receives the link from BlOC
+  final List<String> galleryImages;
 
   const InvitationPreviewScreen({
     super.key,
@@ -46,9 +25,10 @@ class InvitationPreviewScreen extends StatefulWidget {
     required this.mapUrl,
     required this.date,
     required this.bannerImage,
-    required this.galleryImages,
     required this.brideImage,
     required this.groomImage,
+    required this.invitationLink,
+    required this.galleryImages,
   });
 
   @override
@@ -56,787 +36,610 @@ class InvitationPreviewScreen extends StatefulWidget {
       _InvitationPreviewScreenState();
 }
 
-class _InvitationPreviewScreenState
-    extends State<InvitationPreviewScreen>
-    with TickerProviderStateMixin {
-  late AnimationController bgController;
+class _InvitationPreviewScreenState extends State<InvitationPreviewScreen>
+    with SingleTickerProviderStateMixin {
 
-  late Animation<Alignment> topAlignment;
-
-  late Animation<Alignment> bottomAlignment;
-
-  Timer? timer;
-
-  Duration timeLeft = const Duration();
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
 
   @override
   void initState() {
     super.initState();
-
-    bgController = AnimationController(
+    _animController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
-    )..repeat(reverse: true);
-
-    topAlignment = AlignmentTween(
-      begin: Alignment.topLeft,
-      end: Alignment.topRight,
-    ).animate(bgController);
-
-    bottomAlignment = AlignmentTween(
-      begin: Alignment.bottomRight,
-      end: Alignment.bottomLeft,
-    ).animate(bgController);
-
-    timer = Timer.periodic(
-      const Duration(seconds: 1),
-          (_) {
-        if (mounted) {
-          setState(() {
-            timeLeft =
-                widget.date.difference(DateTime.now());
-          });
-        }
-      },
+      duration: const Duration(milliseconds: 900),
     );
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
+    _animController.forward();
   }
 
   @override
   void dispose() {
-    bgController.dispose();
-
-    timer?.cancel();
-
+    _animController.dispose();
     super.dispose();
   }
 
-  TextStyle headerFont(
-      double size, {
-        Color color = kIvory,
-      }) {
-    return GoogleFonts.cormorantGaramond(
-      fontSize: size,
-      fontWeight: FontWeight.bold,
-      color: color,
-      letterSpacing: 1.2,
-    );
+  String _formatDate(DateTime date) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    const days = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+    ];
+    return '${days[date.weekday - 1]}, ${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
-  TextStyle scriptFont(
-      double size, {
-        Color color = kRoseGold,
-      }) {
-    return GoogleFonts.greatVibes(
-      fontSize: size,
-      color: color,
-    );
-  }
+  // ── Show modern alert dialog to copy link ──────────────────────────────────
+  void _showShareDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            'Share Invitation',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Copy your digital invitation link below to share it with your guests.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Link field container
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.invitationLink,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.link, size: 18, color: Colors.grey.shade400),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actionsPadding: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: widget.invitationLink));
+                  if (!context.mounted) return;
+                  Navigator.pop(dialogContext); // Close Dialog
 
-  TextStyle bodyFont(
-      double size, {
-        Color color = Colors.white70,
-      }) {
-    return GoogleFonts.montserrat(
-      fontSize: size,
-      color: color,
-      letterSpacing: 0.5,
+                  // Show clean confirmation SnackBar
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Link copied to clipboard!'),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      backgroundColor: Colors.black87,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.copy, size: 18),
+                label: const Text(
+                  'Copy Link',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kMidnightDeep,
-      body: Stack(
-        children: [
-          AnimatedBuilder(
-            animation: bgController,
-            builder: (_, __) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: topAlignment.value,
-                    end: bottomAlignment.value,
-                    colors: const [
-                      kMidnightDeep,
-                      kDeepPurple,
-                      kDarkIndigo,
-                      kMidnightDeep,
-                    ],
-                  ),
-                ),
-              );
-            },
+      backgroundColor: const Color(0xFFFAFAFA), // Clean off-white background
+
+      // ── Modern Link Floating Action Button ──────────────────────────────────
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showShareDialog(context),
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        icon: const Icon(Icons.share_outlined, size: 20),
+        label: Text(
+          'Share Link',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
           ),
-
-          const FloatingStardust(),
-
-          SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildPhotoHeader(),
-
-                const SizedBox(height: 60),
-
-                FadeInUp(
-                  child: _buildCoupleSection(),
-                ),
-
-                const SizedBox(height: 60),
-
-                FadeIn(
-                  child: _buildStoryArch(),
-                ),
-
-                const SizedBox(height: 60),
-
-                _buildCountdownSection(),
-
-                const SizedBox(height: 60),
-
-                _buildGallerySection(),
-
-                const SizedBox(height: 60),
-
-                _buildVenueSection(),
-
-                const SizedBox(height: 60),
-
-                _buildFooter(),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
-    );
-  }
 
-  Widget _buildPhotoHeader() {
-    return FadeInDown(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          double screenWidth = constraints.maxWidth;
-
-          double dynamicHeight = screenWidth < 600
-              ? 550
-              : (screenWidth < 1024 ? 650 : 750);
-
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                height: dynamicHeight,
-                width: double.infinity,
-                child: ClipRRect(
-                  borderRadius:
-                  const BorderRadius.vertical(
-                    bottom: Radius.circular(50),
-                  ),
-                  child: Image.memory(
-                    base64Decode(widget.bannerImage),
+      body: FadeTransition(
+        opacity: _fadeAnim,
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // ── Banner ─────────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Stack(
+                children: [
+                  SizedBox(
+                    height: 380,
                     width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (_, __, ___) {
-                      return Container(
-                        color: Colors.black,
-                        child: const Center(
-                          child: Icon(
-                            Icons.image,
-                            color: Colors.white,
-                            size: 60,
-                          ),
+                    child: widget.bannerImage.isNotEmpty
+                        ? Image.memory(
+                      base64Decode(widget.bannerImage),
+                      fit: BoxFit.cover,
+                    )
+                        : Container(
+                      color: Colors.grey.shade200,
+                      child: Icon(Icons.landscape, size: 60, color: Colors.grey.shade400),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.transparent,
+                            Color(0x80FAFAFA),
+                            Color(0xFFFAFAFA),
+                          ],
+                          stops: [0.0, 0.5, 0.8, 1.0],
                         ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-
-              Container(
-                height: dynamicHeight,
-                decoration: BoxDecoration(
-                  borderRadius:
-                  const BorderRadius.vertical(
-                    bottom: Radius.circular(50),
-                  ),
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.black.withOpacity(0.8),
-                      Colors.transparent,
-                      Colors.transparent,
-                      kMidnightDeep,
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: const [
-                      0.0,
-                      0.3,
-                      0.7,
-                      1.0,
-                    ],
-                  ),
-                ),
-              ),
-
-              Positioned(
-                top: 40,
-                left: 0,
-                right: 0,
-                child: Column(
-                  children: [
-                    Text(
-                      "Save the Date",
-                      style: scriptFont(50),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Container(
-                      height: 1,
-                      width: 80,
-                      color: kRoseGoldLight,
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Text(
-                      "FOR THE WEDDING OF",
-                      style: bodyFont(
-                        12,
-                        color: kIvory,
                       ),
                     ),
+                  ),
+                  // Modern Back button
+                  Positioned(
+                    top: 48,
+                    left: 20,
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(20),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.black87,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Clean badge
+                  Positioned(
+                    top: 52,
+                    right: 20,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(230),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(10),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        'Wedding Invitation',
+                        style: GoogleFonts.inter(
+                          color: Colors.black87,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Main Content ───────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Container(
+                color: const Color(0xFFFAFAFA),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 16),
+
+                    // ── Together Forever text ────────────────────────────
+                    Text(
+                      'T O G E T H E R   F O R E V E R',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                        letterSpacing: 4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // ── Couple Photos Row ────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Bride
+                          Expanded(
+                            child: Column(
+                              children: [
+                                _couplePhoto(widget.brideImage, isBride: true),
+                                const SizedBox(height: 16),
+                                Text(
+                                  widget.brideName,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.playfairDisplay(
+                                    fontSize: 22,
+                                    color: Colors.black87,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'The Bride',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Ampersand
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              children: [
+                                const SizedBox(height: 20),
+                                Text(
+                                  '&',
+                                  style: GoogleFonts.playfairDisplay(
+                                    fontSize: 32,
+                                    color: Colors.grey.shade300,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Groom
+                          Expanded(
+                            child: Column(
+                              children: [
+                                _couplePhoto(widget.groomImage, isBride: false),
+                                const SizedBox(height: 16),
+                                Text(
+                                  widget.groomName,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.playfairDisplay(
+                                    fontSize: 22,
+                                    color: Colors.black87,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'The Groom',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+
+                    // ── Invitation text ──────────────────────────────────
+                    _minimalistDivider(),
+                    const SizedBox(height: 32),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        'Together with their families\nrequest the pleasure of your company\nat the celebration of their marriage',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                          height: 1.8,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+
+                    // ── Date Card (Modern Style) ─────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Container(
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(12),
+                              blurRadius: 32,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'S A V E   T H E   D A T E',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: Theme.of(context).primaryColor,
+                                letterSpacing: 2,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _formatDate(widget.date),
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.playfairDisplay(
+                                fontSize: 24,
+                                color: Colors.black87,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Container(
+                              height: 1,
+                              width: 100,
+                              color: Colors.grey.shade200,
+                            ),
+                            const SizedBox(height: 24),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.location_on_outlined,
+                                  color: Colors.grey.shade400,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    widget.venue,
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 16,
+                                      color: Colors.black87,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.address,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                color: Colors.grey.shade500,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 48),
+
+                    // ── Gallery ──────────────────────────────────────────
+                    if (widget.galleryImages.isNotEmpty) ...[
+                      Text(
+                        'Our Moments',
+                        style: GoogleFonts.playfairDisplay(
+                          fontSize: 26,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'A glimpse of our journey together',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 220,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          itemCount: widget.galleryImages.length,
+                          itemBuilder: (context, index) {
+                            return Container(
+                              width: 160,
+                              margin: const EdgeInsets.only(right: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withAlpha(10),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: Image.memory(
+                                  base64Decode(widget.galleryImages[index]),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 48),
+                    ],
+
+                    // ── Footer ───────────────────────────────────────────
+                    _minimalistDivider(),
+                    const SizedBox(height: 32),
+                    Text(
+                      'With Love & Joy',
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 18,
+                        color: Colors.grey.shade500,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${widget.groomName} & ${widget.brideName}',
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 24,
+                        color: Colors.black87,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 100), // Added bottom spacing for FAB clearance
                   ],
                 ),
               ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildCoupleSection() {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment:
-          MainAxisAlignment.center,
-          children: [
-            _circularProfile(
-              widget.groomImage,
-            ),
-
-            const SizedBox(width: 40),
-
-            _circularProfile(
-              widget.brideImage,
             ),
           ],
         ),
-
-        const SizedBox(height: 40),
-
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Text(
-              "&",
-              style: GoogleFonts.greatVibes(
-                fontSize: 120,
-                color:
-                kRoseGold.withOpacity(0.15),
-              ),
-            ),
-
-            Column(
-              children: [
-                _gradientText(
-                  widget.groomName.toUpperCase(),
-                  GoogleFonts.cinzel(
-                    fontSize: 28,
-                    fontWeight:
-                    FontWeight.bold,
-                    letterSpacing: 4,
-                  ),
-                ),
-
-                const SizedBox(height: 5),
-
-                Container(
-                  height: 1,
-                  width: 100,
-                  color:
-                  kRoseGold.withOpacity(0.3),
-                ),
-
-                const SizedBox(height: 5),
-
-                _gradientText(
-                  widget.brideName.toUpperCase(),
-                  GoogleFonts.cinzel(
-                    fontSize: 28,
-                    fontWeight:
-                    FontWeight.bold,
-                    letterSpacing: 4,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 20),
-
-        Text(
-          "${widget.date.day}/${widget.date.month}/${widget.date.year}",
-          style: bodyFont(
-            14,
-            color:
-            kIvory.withOpacity(0.7),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _gradientText(
-      String text,
-      TextStyle style,
-      ) {
-    return ShaderMask(
-      blendMode: BlendMode.srcIn,
-      shaderCallback: (bounds) =>
-          const LinearGradient(
-            colors: [
-              kRoseGoldLight,
-              kRoseGold,
-              Color(0xFFB87333),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ).createShader(
-            Rect.fromLTWH(
-              0,
-              0,
-              bounds.width,
-              bounds.height,
-            ),
-          ),
-      child: Text(
-        text,
-        style: style,
       ),
     );
   }
 
-  Widget _buildStoryArch() {
+  Widget _couplePhoto(String base64Image, {required bool isBride}) {
     return Container(
-      margin:
-      const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(30),
-      decoration: BoxDecoration(
-        color: kMidnightSlate.withOpacity(0.6),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(150),
-          topRight: Radius.circular(150),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        border: Border.all(
-          color: kRoseGold.withOpacity(0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        children: [
-          const Icon(
-            Icons.auto_awesome,
-            color: kRoseGold,
-            size: 30,
-          ),
-
-          const SizedBox(height: 20),
-
-          Text(
-            "Our Story",
-            style: headerFont(28),
-          ),
-
-          const SizedBox(height: 15),
-
-          Text(
-            "Together with our families, we invite you to celebrate the beginning of our forever journey.",
-            textAlign: TextAlign.center,
-            style: bodyFont(
-              15,
-              color:
-              kIvory.withOpacity(0.8),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCountdownSection() {
-    return Column(
-      children: [
-        Text(
-          "THE COUNTDOWN",
-          style: headerFont(
-            20,
-            color: kRoseGold,
-          ),
-        ),
-
-        const SizedBox(height: 30),
-
-        Row(
-          mainAxisAlignment:
-          MainAxisAlignment.center,
-          children: [
-            _timePill(
-              timeLeft.inDays.toString(),
-              "Days",
-            ),
-
-            _timePill(
-              (timeLeft.inHours % 24)
-                  .toString(),
-              "Hrs",
-            ),
-
-            _timePill(
-              (timeLeft.inMinutes % 60)
-                  .toString(),
-              "Min",
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _timePill(
-      String val,
-      String label,
-      ) {
-    return Container(
-      margin:
-      const EdgeInsets.symmetric(horizontal: 10),
-      width: 80,
-      height: 100,
-      decoration: BoxDecoration(
-        color:
-        kRoseGold.withOpacity(0.1),
-        borderRadius:
-        BorderRadius.circular(50),
-        border: Border.all(
-          color:
-          kRoseGold.withOpacity(0.2),
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment:
-        MainAxisAlignment.center,
-        children: [
-          Text(
-            val,
-            style: headerFont(
-              24,
-              color: kRoseGold,
-            ),
-          ),
-
-          Text(
-            label,
-            style: bodyFont(10),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGallerySection() {
-    return CarouselSlider(
-      options: CarouselOptions(
-        height: 400,
-        enlargeCenterPage: true,
-        autoPlay: true,
-        viewportFraction: 1.0,
-      ),
-      items:
-      widget.galleryImages.map((img) {
-        return Container(
-          padding:
-          const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: kIvory,
-            borderRadius:
-            BorderRadius.circular(4),
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black45,
-                blurRadius: 10,
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Expanded(
-                child: Image.memory(
-                  base64Decode(img),
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  errorBuilder:
-                      (_, __, ___) {
-                    return Container(
-                      color: Colors.grey,
-                      child: const Center(
-                        child: Icon(
-                          Icons.image,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              Text(
-                "Moments",
-                style: scriptFont(
-                  24,
-                  color: kMidnightDeep,
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildVenueSection() {
-    return Padding(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          Text(
-            "THE VENUE",
-            style: headerFont(
-              28,
-              color: kRoseGold,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          Container(
-            padding: const EdgeInsets.all(40),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color:
-                kRoseGold.withOpacity(0.3),
-              ),
-              borderRadius:
-              BorderRadius.circular(20),
-            ),
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  color: kRoseGold,
-                  size: 40,
-                ),
-
-                const SizedBox(height: 20),
-
-                Text(
-                  widget.venue,
-                  textAlign: TextAlign.center,
-                  style: headerFont(20),
-                ),
-
-                const SizedBox(height: 10),
-
-                Text(
-                  widget.address,
-                  textAlign: TextAlign.center,
-                  style: bodyFont(14),
-                ),
-
-                const SizedBox(height: 30),
-
-                ElevatedButton(
-                  onPressed: () async {
-                    final Uri googleMapsUrl =
-                    Uri.parse(widget.mapUrl);
-
-                    await launchUrl(
-                      googleMapsUrl,
-                      mode: LaunchMode
-                          .externalApplication,
-                    );
-                  },
-                  style:
-                  ElevatedButton.styleFrom(
-                    backgroundColor:
-                    kRoseGold,
-                    foregroundColor:
-                    kMidnightDeep,
-                    padding:
-                    const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 15,
-                    ),
-                    shape:
-                    RoundedRectangleBorder(
-                      borderRadius:
-                      BorderRadius.circular(
-                        30,
-                      ),
-                    ),
-                  ),
-                  child: const Text(
-                    "VIEW ON MAPS",
-                    style: TextStyle(
-                      fontWeight:
-                      FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFooter() {
-    return Container(
-      width: double.infinity,
-      color: Colors.black45,
-      padding:
-      const EdgeInsets.symmetric(vertical: 80),
-      child: Column(
-        children: [
-          Text(
-            "We can't wait to see you!",
-            style: scriptFont(35),
-          ),
-
-          const SizedBox(height: 20),
-
-          Text(
-            "#WeddingInvitation",
-            style: bodyFont(
-              12,
-              color: kRoseGold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _circularProfile(String img) {
-    return Container(
+      width: 120,
+      height: 120,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(
-          color: kRoseGold,
-          width: 2,
-        ),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      child: CircleAvatar(
-        radius: 60,
-        backgroundImage:
-            MemoryImage(base64Decode(img),)
+      padding: const EdgeInsets.all(4),
+      child: ClipOval(
+        child: base64Image.isNotEmpty
+            ? Image.memory(base64Decode(base64Image), fit: BoxFit.cover)
+            : Container(
+          color: Colors.grey.shade100,
+          child: Icon(
+            isBride ? Icons.face_3_outlined : Icons.face_outlined,
+            color: Colors.grey.shade400,
+            size: 40,
+          ),
+        ),
       ),
     );
   }
-}
 
-class FloatingStardust extends StatefulWidget {
-  const FloatingStardust({super.key});
-
-  @override
-  State<FloatingStardust> createState() =>
-      _FloatingStardustState();
-}
-
-class _FloatingStardustState
-    extends State<FloatingStardust>
-    with SingleTickerProviderStateMixin {
-  late AnimationController controller;
-
-  final List<Offset> stars = List.generate(
-    40,
-        (i) => Offset(
-      Random().nextDouble(),
-      Random().nextDouble(),
-    ),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-
-    controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 20),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Stack(
-          children: stars.map((star) {
-            return Positioned(
-              left: star.dx *
-                  MediaQuery.of(context)
-                      .size
-                      .width,
-              top: ((star.dy +
-                  controller.value) %
-                  1.0) *
-                  MediaQuery.of(context)
-                      .size
-                      .height,
-              child: Opacity(
-                opacity:
-                Random().nextDouble() *
-                    0.5 +
-                    0.2,
-                child: Icon(
-                  Icons.auto_awesome,
-                  size:
-                  Random().nextDouble() *
-                      8 +
-                      2,
-                  color: kRoseGoldLight,
-                ),
-              ),
-            );
-          }).toList(),
-        );
-      },
+  Widget _minimalistDivider() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 40,
+          height: 1,
+          color: Colors.grey.shade300,
+        ),
+        const SizedBox(width: 12),
+        Icon(
+          Icons.favorite,
+          size: 10,
+          color: Colors.grey.shade300,
+        ),
+        const SizedBox(width: 12),
+        Container(
+          width: 40,
+          height: 1,
+          color: Colors.grey.shade300,
+        ),
+      ],
     );
   }
 }

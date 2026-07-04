@@ -45,7 +45,7 @@ class MyApp extends StatelessWidget {
 
           return MaterialPageRoute(
             builder: (_) => PublicInvitationScreen(
-              userId: "E12QROygwTS9ZDGt3KT7gzbvAhB2",
+              userId: "qLG0jQfIgjaWiInLpGcmvDQIhM53",
             ),
           );
         }

@@ -15,7 +15,6 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
 
   HomeBloc(this.repository) : super(HomeState.initial()) {
     // ── Existing Handlers ───────────────────────────────────────────────────
-
     on<LoadUserEvent>(_onLoadUser);
 
     on<ChangeCategoryEvent>((event, emit) {
@@ -38,20 +37,19 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
     });
 
     // ── Wedding Invitation Handlers ─────────────────────────────────────────
-
     on<SaveInvitationEvent>(_onSaveInvitation);
 
     on<ResetInvitationStatusEvent>((event, emit) {
       emit(state.copyWith(
         isInvitationLoading: false,
         savedInvitationId: null,
+        invitationLink: null, // Clears link state on screen reset/init
         invitationError: null,
       ));
     });
   }
 
   // ── _onLoadUser ─────────────────────────────────────────────────────────────
-
   Future<void> _onLoadUser(
       LoadUserEvent event,
       Emitter<HomeState> emit,
@@ -69,7 +67,6 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
   }
 
   // ── _onSaveInvitation ───────────────────────────────────────────────────────
-
   Future<void> _onSaveInvitation(
       SaveInvitationEvent event,
       Emitter<HomeState> emit,
@@ -77,6 +74,7 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
     emit(state.copyWith(
       isInvitationLoading: true,
       savedInvitationId: null,
+      invitationLink: null, // Reset link while updating database
       invitationError: null,
     ));
 
@@ -89,12 +87,14 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
       final groomBase64   = await _xFileToBase64(event.groomXFile);
       final galleryBase64 = await _galleryToBase64(event.galleryXFiles);
 
-      // ✅ Fixed key "invitation" — creates on first save, overwrites on update
       final invitationRef = FirebaseDatabase.instance
           .ref()
           .child('users')
           .child(user.uid)
-          .child('invitation');       // ← fixed node, not .push()
+          .child('invitation');
+
+      final invitationLink =
+          "https://codetrax-8fd48.web.app/#/invitation/${user.uid}";
 
       await invitationRef.set({
         'bride_name'     : event.brideName,
@@ -102,6 +102,7 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
         'venue'          : event.venue,
         'address'        : event.address,
         'map_url'        : event.mapUrl,
+        'invitationLink' : invitationLink,
         'date'           : event.weddingDate.toString(),
         'banner_image'   : bannerBase64,
         'bride_image'    : brideBase64,
@@ -111,9 +112,11 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
 
       debugPrint('Invitation saved/updated at users/${user.uid}/invitation');
 
+      // Emitting with the calculated link
       emit(state.copyWith(
         isInvitationLoading: false,
         savedInvitationId: 'invitation',
+        invitationLink: invitationLink, // Passed successfully to UI layer
         invitationError: null,
       ));
     } catch (e) {
@@ -124,8 +127,8 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
       ));
     }
   }
-  // ── Private helpers ─────────────────────────────────────────────────────────
 
+  // ── Private helpers ─────────────────────────────────────────────────────────
   Future<String> _xFileToBase64(XFile file) async {
     final bytes = await file.readAsBytes();
     return base64Encode(bytes);
